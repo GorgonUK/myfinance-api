@@ -26,6 +26,7 @@ const router = (app: Express) => {
   usersRouter.put('/changeCurrency', UserController.changeCurrency);
   userRouter.get('/backup', UserController.backupUser);
   userRouter.put('/restore', UserController.restoreUser);
+  userRouter.put('/restore/blob', UserController.restoreUserFromBlob);
   //endregion
 
   //region AUTH ROUTES

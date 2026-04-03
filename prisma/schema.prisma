@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -12,7 +12,7 @@ model accounts {
   account_id                                                   BigInt              @id @unique(map: "account_id_UNIQUE") @default(autoincrement())
   name                                                         String              @db.VarChar(255)
   type                                                         String              @db.VarChar(45)
-  description                                                  String?             @db.LongText
+  description                                                  String?             @db.Text
   exclude_from_budgets                                         Boolean
   status                                                       String              @db.VarChar(45)
   users_user_id                                                BigInt
@@ -26,7 +26,7 @@ model accounts {
   transactions_transactions_accounts_account_from_idToaccounts transactions[]      @relation("transactions_accounts_account_from_idToaccounts")
   goal_has_account                                             goal_has_account[]
 
-  @@unique([name, users_user_id], map: "name_UNIQUE")
+  @@unique([name, users_user_id])
   @@index([users_user_id], map: "fk_accounts_users1_idx")
 }
 
@@ -47,7 +47,7 @@ model budgets {
   budget_id              BigInt                   @unique(map: "budget_id_UNIQUE") @default(autoincrement())
   month                  Int
   year                   Int
-  observations           String?                  @db.LongText
+  observations           String?                  @db.Text
   is_open                Boolean
   initial_balance        BigInt?
   users_user_id          BigInt
@@ -67,13 +67,13 @@ model budgets_has_categories {
   current_amount         BigInt     @default(0)
   planned_amount_debit   BigInt     @default(0)
   budgets                budgets    @relation(fields: [budgets_budget_id], references: [budget_id], onDelete: NoAction, onUpdate: NoAction, map: "budgets_has_categories_budgets_budget_id_fk")
-  categories             categories @relation(fields: [categories_category_id], references: [category_id], onDelete: NoAction, onUpdate: NoAction, map: "budgets_has_categories_categories_category_id_fk")
-  users                  users      @relation(fields: [budgets_users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "budgets_has_categories_users_user_id_fk")
+  categories             categories @relation(fields: [categories_category_id], references: [category_id], onDelete: NoAction, onUpdate: NoAction)
+  users                  users      @relation(fields: [budgets_users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([budgets_budget_id, budgets_users_user_id, categories_category_id])
   @@index([budgets_budget_id, budgets_users_user_id], map: "fk_budgets_has_categories_budgets1_idx")
   @@index([categories_category_id], map: "fk_budgets_has_categories_categories1_idx")
-  @@index([budgets_users_user_id], map: "budgets_has_categories_users_user_id_fk")
+  @@index([budgets_users_user_id])
 }
 
 model categories {
@@ -81,10 +81,10 @@ model categories {
   name                   String                   @db.VarChar(255)
   type                   String                   @db.Char(1)
   users_user_id          BigInt
-  description            String?                  @db.LongText
+  description            String?                  @db.Text
   color_gradient         String?                  @db.VarChar(45)
   status                 String                   @default("Ativa") @db.VarChar(45)
-  exclude_from_budgets   Int                      @default(0) @db.TinyInt
+  exclude_from_budgets   Int                      @default(0) @db.SmallInt
   budgets_has_categories budgets_has_categories[]
   users                  users                    @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "categories_users_user_id_fk")
   transactions           transactions[]
@@ -100,7 +100,7 @@ model entities {
   users         users          @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "entities_users_user_id_fk")
   transactions  transactions[]
 
-  @@unique([name, users_user_id], map: "name_UNIQUE")
+  @@unique([name, users_user_id])
   @@index([users_user_id], map: "fk_entities_users1_idx")
   @@index([name], map: "name")
 }
@@ -145,7 +145,7 @@ model invest_assets {
 model invest_desired_allocations {
   desired_allocations_id BigInt @unique(map: "desired_allocations_id_UNIQUE") @default(autoincrement())
   type                   String @unique(map: "type_UNIQUE") @db.VarChar(75)
-  alloc_percentage       Float? @db.Float
+  alloc_percentage       Float?
   users_user_id          BigInt
   users                  users  @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "invest_desired_allocations_users_user_id_fk")
 
@@ -154,7 +154,7 @@ model invest_desired_allocations {
 }
 
 model invest_transactions {
-  transaction_id         BigInt                   @id @unique(map: "transaction_id_UNIQUE") @default(autoincrement())
+  transaction_id         BigInt                   @id @default(autoincrement())
   date_timestamp         BigInt
   type                   invest_transactions_type
   note                   String?                  @db.VarChar(100)
@@ -173,7 +173,7 @@ model invest_transactions {
 model rules {
   rule_id                          BigInt  @default(autoincrement())
   matcher_description_operator     String? @db.VarChar(45)
-  matcher_description_value        String? @db.LongText
+  matcher_description_value        String? @db.Text
   matcher_amount_operator          String? @db.VarChar(45)
   matcher_amount_value             BigInt?
   matcher_type_operator            String? @db.VarChar(45)
@@ -196,11 +196,11 @@ model rules {
 }
 
 model transactions {
-  transaction_id                                           BigInt                 @id @unique(map: "transaction_id_UNIQUE") @default(autoincrement())
+  transaction_id                                           BigInt                 @id @default(autoincrement())
   date_timestamp                                           BigInt
   amount                                                   BigInt
   type                                                     String                 @db.Char(1)
-  description                                              String?                @db.LongText
+  description                                              String?                @db.Text
   entities_entity_id                                       BigInt?
   accounts_account_from_id                                 BigInt?
   accounts_account_to_id                                   BigInt?
@@ -221,10 +221,10 @@ model transactions {
 model users {
   user_id                    BigInt                       @id @default(autoincrement())
   username                   String                       @unique(map: "username_UNIQUE") @db.VarChar(45)
-  password                   String                       @db.MediumText
+  password                   String                       @db.Text
   email                      String                       @unique(map: "email_UNIQUE") @db.VarChar(45)
-  sessionkey                 String?                      @db.MediumText
-  sessionkey_mobile          String?                      @db.MediumText
+  sessionkey                 String?                      @db.Text
+  sessionkey_mobile          String?                      @db.Text
   trustlimit                 Int?
   trustlimit_mobile          Int?
   last_update_timestamp      BigInt                       @default(0)
@@ -243,24 +243,24 @@ model users {
 
 model tags {
   tag_id               BigInt                 @id @default(autoincrement())
-  description          String?                @db.LongText
+  description          String?                @db.Text
   name                 String                 @db.VarChar(255)
   users_user_id        BigInt
-  users                users                  @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_user_id")
+  users                users                  @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
   transaction_has_tags transaction_has_tags[]
 
   @@unique([name, users_user_id], map: "uq_name")
-  @@index([users_user_id], map: "fk_users_user_id")
+  @@index([users_user_id])
 }
 
 model transaction_has_tags {
   transactions_transaction_id BigInt
   tags_tag_id                 BigInt
-  tags                        tags         @relation(fields: [tags_tag_id], references: [tag_id], onDelete: NoAction, onUpdate: NoAction, map: "transaction_has_tags_tags_tag_id_fk")
-  transactions                transactions @relation(fields: [transactions_transaction_id], references: [transaction_id], onDelete: NoAction, onUpdate: NoAction, map: "transaction_has_tags_transactions_transaction_id_fk")
+  tags                        tags         @relation(fields: [tags_tag_id], references: [tag_id], onDelete: NoAction, onUpdate: NoAction)
+  transactions                transactions @relation(fields: [transactions_transaction_id], references: [transaction_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([tags_tag_id, transactions_transaction_id])
-  @@index([transactions_transaction_id], map: "transaction_has_tags_transactions_transaction_id_fk")
+  @@index([transactions_transaction_id])
 }
 
 model otp_codes {
@@ -270,9 +270,9 @@ model otp_codes {
   used          Boolean
   created_at    BigInt
   expires_at    BigInt
-  users         users   @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "otp_codes_users_user_id_fk")
+  users         users   @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([users_user_id], map: "otp_codes_users_user_id_fk")
+  @@index([users_user_id])
 }
 
 enum invest_transactions_type {
@@ -285,7 +285,7 @@ enum invest_transactions_type {
 model goals {
   goal_id          BigInt             @id @unique(map: "goal_id_UNIQUE") @default(autoincrement())
   name             String             @db.VarChar(255)
-  description      String?            @db.LongText
+  description      String?            @db.Text
   priority         Int
   amount           BigInt
   due_date         BigInt?

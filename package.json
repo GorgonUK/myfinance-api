@@ -3,7 +3,7 @@
   "scripts": {
     "start": "npx tsx src/server.ts",
     "start:dev": "npx tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "npm run db:generate && tsc",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format .",
@@ -53,8 +53,10 @@
   },
   "homepage": "https://github.com/aFaneca/myfin#readme",
   "dependencies": {
+    "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^6.15.0",
     "@types/nodemailer": "^7.0.1",
+    "@vercel/blob": "^2.3.3",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dayjs": "^1.10.6",
@@ -68,6 +70,7 @@
     "joi": "^18.0.1",
     "mysql2": "^3.11.5",
     "nodemailer": "^7.0.5",
+    "pg": "^8.20.0",
     "ts-node": "^10.9.2"
   },
   "engines": {

@@ -1,4 +1,5 @@
 import { type Prisma, PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import type { DefaultArgs } from '@prisma/client/runtime/library.js';
 import Logger from '../utils/Logger.js';
 
@@ -10,7 +11,15 @@ BigInt.prototype.toJSON = function () {
   return int || this.toString();
 };
 
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL environment variable is required for Prisma.');
+}
+
+const adapter = new PrismaPg({ connectionString });
+
 export const prisma = new PrismaClient({
+  adapter,
   /* log: ["query"] */
 });
 

@@ -6,6 +6,7 @@ import UserService from '../services/userService.js';
 import Logger from '../utils/Logger.js';
 import { BackupData } from '../utils/backupManager.js';
 import CommonsController from './commonsController.js';
+import { get as getBlob } from '@vercel/blob';
 
 // CREATE
 const createUserSchema = joi.object({
@@ -201,6 +202,13 @@ const restoreUserSchema = joi.object({
   transactions: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
 });
 
+// Vercel serverless functions have a request body size limit (~4.5MB for Node),
+// so for large backups/restores we support fetching the backup JSON from a Vercel Blob.
+const restoreUserFromBlobSchema = joi.object({
+  // "pathname" is the identifier returned by @vercel/blob when uploading a file.
+  pathname: joi.string().required(),
+});
+
 export enum RestoreUserErrorCodes {
   IncompatibleVersions = 'INCOMPATIBLE_VERSIONS',
   MalformedBackup = 'MALFORMED_BACKUP',
@@ -210,6 +218,29 @@ const restoreUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const data = await restoreUserSchema.validateAsync(req.body);
+
+    await UserService.restoreUser(sessionData.userId, data);
+    res.json('Restoration was successful!');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const restoreUserFromBlob = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const { pathname } = await restoreUserFromBlobSchema.validateAsync(req.body);
+
+    const blobResult = await getBlob(pathname, { access: 'private' });
+    if (!blobResult || blobResult.statusCode !== 200) {
+      throw APIError.notFound('Backup blob not found.');
+    }
+
+    // Convert the blob stream into a JSON payload we can reuse with the existing validation.
+    const jsonText = await new Response(blobResult.stream).text();
+    const parsed = JSON.parse(jsonText);
+    const data = await restoreUserSchema.validateAsync(parsed);
 
     await UserService.restoreUser(sessionData.userId, data);
     res.json('Restoration was successful!');
@@ -231,4 +262,5 @@ export default {
   changeCurrency,
   backupUser,
   restoreUser,
+  restoreUserFromBlob,
 };
