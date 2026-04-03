@@ -1,5 +1,5 @@
 import type { invest_transactions_type } from '@prisma/client';
-import { performDatabaseRequest, prisma } from '../config/prisma.js';
+import { performDatabaseRequest, prisma, prismaSequentialTransaction } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
@@ -37,17 +37,15 @@ const getFilteredTrxByPage = async (
                                        AND (note LIKE
                                             ${query} OR
                                             invest_assets.type LIKE ${query}
-                                       OR invest_transactions.type LIKE ${query}
-                                       OR total_price LIKE ${query}
-                                       OR (total_price / 100) LIKE ${query}
+                                       OR CAST(invest_transactions.type AS text) LIKE ${query}
+                                       OR CAST(total_price AS text) LIKE ${query}
+                                       OR CAST((total_price / 100) AS text) LIKE ${query}
                                        OR name LIKE ${query}
                                        OR ticker LIKE ${query}
                                        OR broker LIKE ${query}
-                                       OR fees_taxes_amount LIKE ${query}
-                                       OR (fees_taxes_amount / 100) LIKE ${query}
-                                       OR fees_taxes_units LIKE ${query}
-                                       OR (fees_taxes_units) LIKE ${query})
-                                     GROUP BY transaction_id
+                                       OR CAST(fees_taxes_amount AS text) LIKE ${query}
+                                       OR CAST((fees_taxes_amount / 100) AS text) LIKE ${query}
+                                       OR CAST(fees_taxes_units AS text) LIKE ${query})
                                      ORDER BY date_timestamp
                                        DESC
                                        LIMIT ${pageSize}
@@ -64,17 +62,15 @@ const getFilteredTrxByPage = async (
                                        AND (note LIKE
                                             ${query} OR
                                             invest_assets.type LIKE ${query}
-                                       OR invest_transactions.type LIKE ${query}
-                                       OR total_price LIKE ${query}
-                                       OR (total_price/100) LIKE ${query}
+                                       OR CAST(invest_transactions.type AS text) LIKE ${query}
+                                       OR CAST(total_price AS text) LIKE ${query}
+                                       OR CAST((total_price/100) AS text) LIKE ${query}
                                        OR name LIKE ${query}
                                        OR ticker LIKE ${query}
                                        OR broker LIKE ${query}
-                                       OR fees_taxes_amount LIKE ${query}
-                                       OR (fees_taxes_amount / 100) LIKE ${query}
-                                       OR fees_taxes_units LIKE ${query}
-                                       OR (fees_taxes_units) LIKE ${query})
-                                     GROUP BY transaction_id) trx`;
+                                       OR CAST(fees_taxes_amount AS text) LIKE ${query}
+                                       OR CAST((fees_taxes_amount / 100) AS text) LIKE ${query}
+                                       OR CAST(fees_taxes_units AS text) LIKE ${query})) trx`;
 
   const totalCountQuery = prisma.$queryRaw`SELECT count(*) as count
                                            FROM (SELECT transaction_id, date_timestamp, invest_transactions.type as trx_type, 
@@ -82,14 +78,11 @@ const getFilteredTrxByPage = async (
                                         invest_assets_asset_id, name, ticker, broker, invest_assets.asset_id, (fees_taxes_amount / 100) as fees_taxes_amount, fees_taxes_units 
                                      FROM invest_transactions
                                             INNER JOIN invest_assets ON invest_assets.asset_id = invest_assets_asset_id
-                                     WHERE users_user_id = ${userId}
-                                     GROUP BY transaction_id) trx`;
+                                     WHERE users_user_id = ${userId}) trx`;
 
-  const [mainQueryResult, countQueryResult, totalCountQueryResult] = await prisma.$transaction([
-    mainQuery,
-    countQuery,
-    totalCountQuery,
-  ]);
+  const [mainQueryResult, countQueryResult, totalCountQueryResult] = await prismaSequentialTransaction(
+    [mainQuery, countQuery, totalCountQuery]
+  );
   return {
     results: mainQueryResult,
     filtered_count: countQueryResult[0].count,

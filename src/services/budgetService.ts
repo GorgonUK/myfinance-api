@@ -1,4 +1,4 @@
-import { type Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { performDatabaseRequest, prisma } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
@@ -318,14 +318,20 @@ class BudgetService {
       `userId: ${userId} | query: ${query} | offsetValue: ${offsetValue} | page: ${page} | pageSize: ${pageSize}} | isOpenValue: ${isOpenValue}`
   );*/
 
+    const isOpenSql =
+      isOpenValue === '%'
+        ? Prisma.empty
+        : isOpenValue === '1'
+          ? Prisma.sql`AND is_open = true`
+          : Prisma.sql`AND is_open = false`;
+
     // main query for list of results (limited by $pageSize and $offsetValue)
     const results: any = await dbClient.$queryRaw`
       SELECT budget_id, month, year, observations, is_open, users_user_id
       FROM budgets
       WHERE (users_user_id = ${userId})
         AND (observations LIKE ${query} OR month::text LIKE ${query} OR year::text LIKE ${query})
-        AND is_open LIKE ${isOpenValue}
-      GROUP BY budget_id
+        ${isOpenSql}
       ORDER BY year DESC, month DESC
       LIMIT ${pageSize}
       OFFSET ${offsetValue}`;
@@ -336,8 +342,7 @@ class BudgetService {
             FROM budgets
             WHERE (users_user_id = ${userId})
               AND (observations LIKE ${query} OR month::text LIKE ${query} OR year::text LIKE ${query})
-              AND is_open LIKE ${isOpenValue}
-            GROUP BY budget_id) budget`;
+              ${isOpenSql}) budget`;
 
     // count of total of results
     const totalCount = await dbClient.$queryRaw`

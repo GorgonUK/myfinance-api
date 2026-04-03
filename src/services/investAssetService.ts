@@ -1016,40 +1016,33 @@ class InvestAssetService {
       );
 
       // Reset snapshots for next 2 months (in case there are no transactions in these months and the balance doesn't get recalculated
-      let addCustomBalanceSnapshotsPromises = [];
-      addCustomBalanceSnapshotsPromises.push(
-        InvestAssetService.addCustomBalanceSnapshot(
-          assetId,
-          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).month,
-          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).year,
-          Number(priorMonthsSnapshot.units),
-          Number(priorMonthsSnapshot.invested_amount),
-          Number(priorMonthsSnapshot.current_value),
-          Number(priorMonthsSnapshot.withdrawn_amount),
-          Number(priorMonthsSnapshot.income_amount ?? 0),
-          Number(priorMonthsSnapshot.cost_amount ?? 0),
-          Number(priorMonthsSnapshot.fees_taxes ?? 0),
-          prismaTx
-        )
+      await InvestAssetService.addCustomBalanceSnapshot(
+        assetId,
+        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).month,
+        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).year,
+        Number(priorMonthsSnapshot.units),
+        Number(priorMonthsSnapshot.invested_amount),
+        Number(priorMonthsSnapshot.current_value),
+        Number(priorMonthsSnapshot.withdrawn_amount),
+        Number(priorMonthsSnapshot.income_amount ?? 0),
+        Number(priorMonthsSnapshot.cost_amount ?? 0),
+        Number(priorMonthsSnapshot.fees_taxes ?? 0),
+        prismaTx
       );
 
-      addCustomBalanceSnapshotsPromises.push(
-        InvestAssetService.addCustomBalanceSnapshot(
-          assetId,
-          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).month,
-          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).year,
-          Number(priorMonthsSnapshot.units),
-          Number(priorMonthsSnapshot.invested_amount),
-          Number(priorMonthsSnapshot.current_value),
-          Number(priorMonthsSnapshot.withdrawn_amount),
-          Number(priorMonthsSnapshot.income_amount ?? 0),
-          Number(priorMonthsSnapshot.cost_amount ?? 0),
-          Number(priorMonthsSnapshot.fees_taxes ?? 0),
-          prismaTx
-        )
+      await InvestAssetService.addCustomBalanceSnapshot(
+        assetId,
+        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).month,
+        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).year,
+        Number(priorMonthsSnapshot.units),
+        Number(priorMonthsSnapshot.invested_amount),
+        Number(priorMonthsSnapshot.current_value),
+        Number(priorMonthsSnapshot.withdrawn_amount),
+        Number(priorMonthsSnapshot.income_amount ?? 0),
+        Number(priorMonthsSnapshot.cost_amount ?? 0),
+        Number(priorMonthsSnapshot.fees_taxes ?? 0),
+        prismaTx
       );
-
-      await Promise.all(addCustomBalanceSnapshotsPromises);
 
       if (beginMonth > 1) beginMonth--;
       else {
@@ -1149,13 +1142,25 @@ class InvestAssetService {
         }
 
         /* Automatically add snapshots for current & next 6 months in order to create a buffer*/
-        addCustomBalanceSnapshotsPromises = [];
+        await InvestAssetService.addCustomBalanceSnapshot(
+          assetId,
+          month,
+          year,
+          Number(initialSnapshot.units),
+          Number(initialSnapshot.invested_amount),
+          Number(initialSnapshot.current_value),
+          Number(initialSnapshot.withdrawn_amount),
+          Number(initialSnapshot.income_amount ?? 0),
+          Number(initialSnapshot.cost_amount ?? 0),
+          Number(initialSnapshot.fees_taxes ?? 0),
+          prismaTx
+        );
 
-        addCustomBalanceSnapshotsPromises.push(
-          InvestAssetService.addCustomBalanceSnapshot(
+        for (let i = 1; i <= 6; i++) {
+          await InvestAssetService.addCustomBalanceSnapshot(
             assetId,
-            month,
-            year,
+            DateTimeUtils.incrementMonthByX(month, year, i).month,
+            DateTimeUtils.incrementMonthByX(month, year, i).year,
             Number(initialSnapshot.units),
             Number(initialSnapshot.invested_amount),
             Number(initialSnapshot.current_value),
@@ -1164,28 +1169,8 @@ class InvestAssetService {
             Number(initialSnapshot.cost_amount ?? 0),
             Number(initialSnapshot.fees_taxes ?? 0),
             prismaTx
-          )
-        );
-
-        for (let i = 1; i <= 6; i++) {
-          addCustomBalanceSnapshotsPromises.push(
-            InvestAssetService.addCustomBalanceSnapshot(
-              assetId,
-              DateTimeUtils.incrementMonthByX(month, year, i).month,
-              DateTimeUtils.incrementMonthByX(month, year, i).year,
-              Number(initialSnapshot.units),
-              Number(initialSnapshot.invested_amount),
-              Number(initialSnapshot.current_value),
-              Number(initialSnapshot.withdrawn_amount),
-              Number(initialSnapshot.income_amount ?? 0),
-              Number(initialSnapshot.cost_amount ?? 0),
-              Number(initialSnapshot.fees_taxes ?? 0),
-              prismaTx
-            )
           );
         }
-
-        await Promise.all(addCustomBalanceSnapshotsPromises);
       }
 
       return initialSnapshot;

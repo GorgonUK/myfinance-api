@@ -1,4 +1,4 @@
-import { performDatabaseRequest, prisma } from '../config/prisma.js';
+import { performDatabaseRequest, prisma, prismaSequentialTransaction } from '../config/prisma.js';
 import APIError from '../errorHandling/apiError.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
 import type { CalculatedEntityAmounts } from './entityService.js';
@@ -63,11 +63,9 @@ const getFilteredTagsForUserByPage = async (
                                         FROM tags
                                         WHERE tags.users_user_id = ${userId}`;
 
-  const [mainQueryResult, countQueryResult, totalCountQueryResult] = await prisma.$transaction([
-    mainQuery,
-    countQuery,
-    totalCountQuery,
-  ]);
+  const [mainQueryResult, countQueryResult, totalCountQueryResult] = await prismaSequentialTransaction(
+    [mainQuery, countQuery, totalCountQuery]
+  );
 
   return {
     results: mainQueryResult,

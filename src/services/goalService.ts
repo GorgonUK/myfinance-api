@@ -1,4 +1,8 @@
-import { performDatabaseRequest, prisma } from '../config/prisma.js';
+import {
+  DEFAULT_PRISMA_TRANSACTION_OPTIONS,
+  performDatabaseRequest,
+  prisma,
+} from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import ConvertUtils from '../utils/convertUtils.js';
 
@@ -197,17 +201,20 @@ class GoalService {
   }
 
   static async deleteGoal(goalId: bigint, dbClient = prisma) {
-    return dbClient.$transaction(async (tx) => {
-      // Delete funding accounts first
-      await tx.goal_has_account.deleteMany({
-        where: { goals_goal_id: goalId },
-      });
+    return dbClient.$transaction(
+      async (tx) => {
+        // Delete funding accounts first
+        await tx.goal_has_account.deleteMany({
+          where: { goals_goal_id: goalId },
+        });
 
-      // Delete the goal
-      await tx.goals.delete({
-        where: { goal_id: goalId },
-      });
-    });
+        // Delete the goal
+        await tx.goals.delete({
+          where: { goal_id: goalId },
+        });
+      },
+      DEFAULT_PRISMA_TRANSACTION_OPTIONS
+    );
   }
 
   static async updateGoal(goal: UpdateGoalType, userId: bigint, dbClient = prisma) {
@@ -222,34 +229,37 @@ class GoalService {
       updated_at: BigInt(timestamp),
     };
 
-    return dbClient.$transaction(async (tx) => {
-      // Update the goal
-      const updatedGoal = await tx.goals.update({
-        where: { goal_id: goal.goal_id },
-        data: goalObj,
-      });
-
-      // Delete existing funding accounts
-      await tx.goal_has_account.deleteMany({
-        where: { goals_goal_id: goal.goal_id },
-      });
-
-      // Create new funding accounts
-      if (goal.funding_accounts && goal.funding_accounts.length > 0) {
-        const fundingAccountsData = goal.funding_accounts.map((fa) => ({
-          goals_goal_id: goal.goal_id,
-          accounts_account_id: BigInt(fa.account_id),
-          match_type: fa.funding_type,
-          match_value: fa.funding_amount,
-        }));
-
-        await tx.goal_has_account.createMany({
-          data: fundingAccountsData,
+    return dbClient.$transaction(
+      async (tx) => {
+        // Update the goal
+        const updatedGoal = await tx.goals.update({
+          where: { goal_id: goal.goal_id },
+          data: goalObj,
         });
-      }
 
-      return updatedGoal;
-    });
+        // Delete existing funding accounts
+        await tx.goal_has_account.deleteMany({
+          where: { goals_goal_id: goal.goal_id },
+        });
+
+        // Create new funding accounts
+        if (goal.funding_accounts && goal.funding_accounts.length > 0) {
+          const fundingAccountsData = goal.funding_accounts.map((fa) => ({
+            goals_goal_id: goal.goal_id,
+            accounts_account_id: BigInt(fa.account_id),
+            match_type: fa.funding_type,
+            match_value: fa.funding_amount,
+          }));
+
+          await tx.goal_has_account.createMany({
+            data: fundingAccountsData,
+          });
+        }
+
+        return updatedGoal;
+      },
+      DEFAULT_PRISMA_TRANSACTION_OPTIONS
+    );
   }
 
   static async getCountOfUserGoals(userId: bigint, dbClient = prisma) {

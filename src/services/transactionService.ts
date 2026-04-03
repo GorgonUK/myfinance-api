@@ -1,4 +1,9 @@
-import { performDatabaseRequest, prisma } from '../config/prisma.js';
+import {
+  BULK_IMPORT_TRANSACTION_OPTIONS,
+  performDatabaseRequest,
+  prisma,
+  prismaSequentialTransaction,
+} from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
@@ -39,7 +44,6 @@ const getTransactionsForUser = async (
                                        ON acc_from.account_id = transactions.accounts_account_from_id
                       WHERE acc_to.users_user_id = ${userId}
                          OR acc_from.users_user_id = ${userId}
-                      GROUP BY transaction_id
                       ORDER BY transactions.date_timestamp DESC
                       LIMIT ${trxLimit}`;
 
@@ -141,11 +145,24 @@ const getFilteredTransactionsByForUser = async (
                                             ${query} OR
                                             acc_from.name LIKE ${query}
                                        OR acc_to.name LIKE ${query}
-                                       OR (amount / 100) LIKE ${query}
+                                       OR CAST((transactions.amount / 100) AS text) LIKE ${query}
                                        OR entities.name LIKE ${query}
                                        OR categories.name LIKE ${query}
                                        OR tags.name LIKE ${query})
-                                     GROUP BY transaction_id
+                                     GROUP BY transactions.transaction_id,
+                                              transactions.is_essential,
+                                              transactions.date_timestamp,
+                                              transactions.amount,
+                                              transactions.type,
+                                              transactions.description,
+                                              entities.entity_id,
+                                              entities.name,
+                                              transactions.categories_category_id,
+                                              categories.name,
+                                              transactions.accounts_account_from_id,
+                                              acc_to.name,
+                                              transactions.accounts_account_to_id,
+                                              acc_from.name
                                      ORDER BY transactions.date_timestamp DESC, transactions.transaction_id DESC
                                      LIMIT ${pageSize} OFFSET ${offsetValue}`;
 
@@ -168,12 +185,12 @@ const getFilteredTransactionsByForUser = async (
                                                    ${query} OR
                                                    acc_from.name LIKE ${query}
                                               OR acc_to.name LIKE ${query}
-                                              OR (amount / 100) LIKE ${query}
+                                              OR CAST((transactions.amount / 100) AS text) LIKE ${query}
                                               OR entities.name LIKE ${query}
                                               OR categories.name LIKE
                                                  ${query}
                                               OR tags.name LIKE ${query})
-                                            GROUP BY transaction_id) trx`;
+                                            GROUP BY transactions.transaction_id, transactions.date_timestamp) trx`;
 
   const totalCountQuery = prisma.$queryRaw`SELECT count(*) as count
                                            FROM (SELECT transactions.date_timestamp
@@ -187,13 +204,11 @@ const getFilteredTransactionsByForUser = async (
                                                         LEFT JOIN accounts acc_from
                                                                   ON acc_from.account_id = transactions.accounts_account_from_id
                                                  WHERE (acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId})
-                                                 GROUP BY transaction_id) trx`;
+                                                 GROUP BY transactions.transaction_id, transactions.date_timestamp) trx`;
 
-  const [mainQueryResult, countQueryResult, totalCountQueryResult] = await prisma.$transaction([
-    mainQuery,
-    countQuery,
-    totalCountQuery,
-  ]);
+  const [mainQueryResult, countQueryResult, totalCountQueryResult] = await prismaSequentialTransaction(
+    [mainQuery, countQuery, totalCountQuery]
+  );
 
   // Attach associated tags to transaction
   const promises = [];
@@ -273,18 +288,17 @@ const createTransaction = async (
     );
 
     // Associate tags with transaction
-    await Promise.all(
-      trx.tags?.map(async (tagName) => {
-        const tag = await TagService.addTagToTransactionByName(
+    if (trx.tags?.length) {
+      for (const tagName of trx.tags) {
+        await TagService.addTagToTransactionByName(
           userId,
           addedTrx.transaction_id,
           tagName,
           true,
           prismaTx
         );
-        return tag;
-      }) || []
-    );
+      }
+    }
 
     let newBalance;
     switch (trx.type) {
@@ -344,39 +358,43 @@ const createTransactionsInBulk = async (
   trxList: Array<CreateTransactionType>,
   dbClient = undefined
 ) =>
-  performDatabaseRequest(async (prismaTx) => {
-    let importedCnt = 0;
-    for (const trx of trxList) {
-      if (
-        !trx.date_timestamp ||
-        !trx.amount ||
-        !trx.type ||
-        (!trx.account_from_id && !trx.account_to_id)
-      ) {
-        continue;
+  performDatabaseRequest(
+    async (prismaTx) => {
+      let importedCnt = 0;
+      for (const trx of trxList) {
+        if (
+          !trx.date_timestamp ||
+          !trx.amount ||
+          !trx.type ||
+          (!trx.account_from_id && !trx.account_to_id)
+        ) {
+          continue;
+        }
+
+        // Both accounts (if defined) need to belong to the user making the request
+        if (
+          trx.account_from_id &&
+          !(await AccountService.doesAccountBelongToUser(userId, trx.account_from_id))
+        ) {
+          throw APIError.notAuthorized();
+        }
+
+        if (
+          trx.account_to_id &&
+          !(await AccountService.doesAccountBelongToUser(userId, trx.account_to_id))
+        ) {
+          throw APIError.notAuthorized();
+        }
+
+        await createTransaction(userId, trx, prismaTx);
+        importedCnt++;
       }
 
-      // Both accounts (if defined) need to belong to the user making the request
-      if (
-        trx.account_from_id &&
-        !(await AccountService.doesAccountBelongToUser(userId, trx.account_from_id))
-      ) {
-        throw APIError.notAuthorized();
-      }
-
-      if (
-        trx.account_to_id &&
-        !(await AccountService.doesAccountBelongToUser(userId, trx.account_to_id))
-      ) {
-        throw APIError.notAuthorized();
-      }
-
-      await createTransaction(userId, trx, prismaTx);
-      importedCnt++;
-    }
-
-    return importedCnt;
-  }, dbClient);
+      return importedCnt;
+    },
+    dbClient,
+    dbClient == null ? BULK_IMPORT_TRANSACTION_OPTIONS : null
+  );
 
 const deleteTransaction = async (userId: bigint, transactionId: number, dbClient = undefined) => {
   await performDatabaseRequest(async (prismaTx) => {
@@ -757,7 +775,6 @@ const getAllTransactionsForUserInCategoryAndInMonth = async (
                               AND transactions.date_timestamp <= ${DateTimeUtils.getUnixTimestampFromDate(
                                 maxDate
                               )}
-                            GROUP BY transaction_id
                             ORDER BY transactions.date_timestamp
                                 DESC`;
 };

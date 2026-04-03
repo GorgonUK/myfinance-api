@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { performDatabaseRequest, prisma } from '../config/prisma.js';
+import { performDatabaseRequest, prisma, prismaSequentialTransaction } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
 import Logger from '../utils/Logger.js';
@@ -70,7 +70,7 @@ class CategoryService {
       },
     });
 
-    return prisma.$transaction([deleteBudgetHasCategoriesRefs, deleteCat]);
+    return prismaSequentialTransaction([deleteBudgetHasCategoriesRefs, deleteCat]);
   }
 
   static async updateCategory(

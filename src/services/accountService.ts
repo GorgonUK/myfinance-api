@@ -1,5 +1,5 @@
-import type { Prisma } from '@prisma/client';
-import { performDatabaseRequest, prisma } from '../config/prisma.js';
+import { Prisma } from '@prisma/client';
+import { performDatabaseRequest, prisma, prismaSequentialTransaction } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
 import ConvertUtils from '../utils/convertUtils.js';
@@ -92,7 +92,9 @@ class AccountService {
   }
 
   static async getAccountsForUserWithAmounts(userId: bigint, onlyActive = false) {
-    const onlyActiveExcerpt = onlyActive ? `AND a.status = ${MYFIN.ACCOUNT_STATUS.ACTIVE}` : '';
+    const onlyActiveSql = onlyActive
+      ? Prisma.sql`AND a.status = ${MYFIN.ACCOUNT_STATUS.ACTIVE}`
+      : Prisma.empty;
 
     return prisma.$queryRaw`SELECT a.account_id,
                                    a.name,
@@ -103,8 +105,9 @@ class AccountService {
                                    a.exclude_from_budgets,
                                    (a.current_balance / 100) as balance, a.users_user_id
                             FROM accounts a
-                            WHERE users_user_id = ${userId} || ${onlyActiveExcerpt}
-                            ORDER BY abs(balance) DESC, case when a.status = ${MYFIN.TRX_TYPES.EXPENSE} then 1 else 0 end`;
+                            WHERE a.users_user_id = ${userId}
+                            ${onlyActiveSql}
+                            ORDER BY abs(a.current_balance / 100) DESC, case when a.status = ${MYFIN.TRX_TYPES.EXPENSE} then 1 else 0 end`;
   }
 
   static async doesAccountBelongToUser(userId: bigint, accountId: bigint, dbClient = prisma) {
@@ -133,7 +136,7 @@ class AccountService {
       where: { account_id: accountId },
     });
 
-    await prisma.$transaction([deleteTransactions, deleteBalanceSnapshots, deleteAccount]);
+    await prismaSequentialTransaction([deleteTransactions, deleteBalanceSnapshots, deleteAccount]);
   }
 
   static async updateAccount(account: UpdateAccountType, userId: bigint) {
@@ -297,34 +300,26 @@ class AccountService {
       priorMonthsBalance = 0;
     }
 
-    let addCustomBalanceSnapshotsPromises = [];
-    addCustomBalanceSnapshotsPromises.push(
-      this.addCustomBalanceSnapshot(accountId, beginMonth, beginYear, priorMonthsBalance, dbClient)
-    );
+    /* Sequential: Prisma + pg adapter does not support parallel queries on one interactive tx (P2028). */
+    await this.addCustomBalanceSnapshot(accountId, beginMonth, beginYear, priorMonthsBalance, dbClient);
 
     /* Reset balance for next 2 months (in case there are no transactions in
                                                   these months and the balance doesn't get recalculated */
-    addCustomBalanceSnapshotsPromises.push(
-      this.addCustomBalanceSnapshot(
-        accountId,
-        beginMonth < 12 ? beginMonth + 1 : 1,
-        beginMonth < 12 ? beginYear : beginYear + 1,
-        priorMonthsBalance,
-        dbClient
-      )
+    await this.addCustomBalanceSnapshot(
+      accountId,
+      beginMonth < 12 ? beginMonth + 1 : 1,
+      beginMonth < 12 ? beginYear : beginYear + 1,
+      priorMonthsBalance,
+      dbClient
     );
 
-    addCustomBalanceSnapshotsPromises.push(
-      this.addCustomBalanceSnapshot(
-        accountId,
-        beginMonth < 11 ? beginMonth + 2 : 1,
-        beginMonth < 11 ? beginYear : beginYear + 1,
-        priorMonthsBalance,
-        dbClient
-      )
+    await this.addCustomBalanceSnapshot(
+      accountId,
+      beginMonth < 11 ? beginMonth + 2 : 1,
+      beginMonth < 11 ? beginYear : beginYear + 1,
+      priorMonthsBalance,
+      dbClient
     );
-
-    await Promise.all(addCustomBalanceSnapshotsPromises);
 
     // Decrease begin month by 1
     if (beginMonth > 1) {
@@ -380,32 +375,21 @@ class AccountService {
 
       initialBalance += trxAmount;
 
-      addCustomBalanceSnapshotsPromises = [];
-
-      addCustomBalanceSnapshotsPromises.push(
-        this.addCustomBalanceSnapshot(accountId, month, year, initialBalance, dbClient)
+      await this.addCustomBalanceSnapshot(accountId, month, year, initialBalance, dbClient);
+      await this.addCustomBalanceSnapshot(
+        accountId,
+        month < 12 ? month + 1 : 1,
+        month < 12 ? year : year + 1,
+        initialBalance,
+        dbClient
       );
-      addCustomBalanceSnapshotsPromises.push(
-        this.addCustomBalanceSnapshot(
-          accountId,
-          month < 12 ? month + 1 : 1,
-          month < 12 ? year : year + 1,
-          initialBalance,
-          dbClient
-        )
+      await this.addCustomBalanceSnapshot(
+        accountId,
+        month < 11 ? month + 2 : 1,
+        month < 11 ? year : year + 1,
+        initialBalance,
+        dbClient
       );
-
-      addCustomBalanceSnapshotsPromises.push(
-        this.addCustomBalanceSnapshot(
-          accountId,
-          month < 11 ? month + 2 : 1,
-          month < 11 ? year : year + 1,
-          initialBalance,
-          dbClient
-        )
-      );
-
-      await Promise.all(addCustomBalanceSnapshotsPromises);
     }
 
     /* Logger.addLog(`FINAL BALANCE: ${initialBalance}`); */
@@ -475,16 +459,14 @@ class AccountService {
         },
       });
 
-      const balancePromises = [];
+      const balances: Awaited<ReturnType<typeof this.getBalanceSnapshotAtMonth>>[] = [];
       for (const account of accounts) {
         if (includeInvestmentAccounts || account.type !== MYFIN.ACCOUNT_TYPES.INVESTING) {
-          balancePromises.push(
-            this.getBalanceSnapshotAtMonth(account.account_id, month, year, prismaTx)
+          balances.push(
+            await this.getBalanceSnapshotAtMonth(account.account_id, month, year, prismaTx)
           );
         }
       }
-
-      const balances = await Promise.all(balancePromises);
       const balance = balances.reduce((result, current) => {
         const balanceSnapshotAtMonth = Number.parseFloat(String(current?.balance || 0));
         if (balanceSnapshotAtMonth) {
@@ -616,12 +598,9 @@ class AccountService {
   static async recalculateAllUserAccountsBalances(userId: bigint, dbClient = prisma) {
     await performDatabaseRequest(async (dbTx) => {
       const userAccounts = await this.getAccountsForUser(userId, { account_id: true }, dbTx);
-      const promises = [];
       for (const account of userAccounts) {
-        promises.push(this.recalculateAndSetAccountBalance(userId, account.account_id, dbTx));
+        await this.recalculateAndSetAccountBalance(userId, account.account_id, dbTx);
       }
-
-      await Promise.all(promises);
     }, dbClient);
   }
 
@@ -640,9 +619,9 @@ class AccountService {
                                    a.exclude_from_budgets,
                                    (a.current_balance / 100) as balance, a.users_user_id
                             FROM accounts a
-                            WHERE users_user_id = ${userId}
+                            WHERE a.users_user_id = ${userId}
                               AND a.status LIKE ${onlyActive ? MYFIN.ACCOUNT_STATUS.ACTIVE : '%'}
-                            ORDER BY abs(balance) DESC, case when a.status = ${
+                            ORDER BY abs(a.current_balance / 100) DESC, case when a.status = ${
                               MYFIN.ACCOUNT_STATUS.INACTIVE
                             } then 1 else 0 end`;
     }, dbClient);
