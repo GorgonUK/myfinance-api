@@ -150,7 +150,7 @@ const getFilteredTransactionsByForUser = async (
                                      LIMIT ${pageSize} OFFSET ${offsetValue}`;
 
   // count of total of filtered results
-  const countQuery = prisma.$queryRaw`SELECT count(*) as 'count'
+  const countQuery = prisma.$queryRaw`SELECT count(*) as count
                                       FROM (SELECT transactions.date_timestamp, GROUP_CONCAT(tags.name) as tag_names
                                             from transactions
                                                    LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
@@ -175,7 +175,7 @@ const getFilteredTransactionsByForUser = async (
                                               OR tags.name LIKE ${query})
                                             GROUP BY transaction_id) trx`;
 
-  const totalCountQuery = prisma.$queryRaw`SELECT count(*) as 'count'
+  const totalCountQuery = prisma.$queryRaw`SELECT count(*) as count
                                            FROM (SELECT transactions.date_timestamp
                                                  from transactions
                                                         LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
@@ -763,7 +763,7 @@ const getAllTransactionsForUserInCategoryAndInMonth = async (
 };
 
 const getCountOfUserTransactions = async (userId: bigint, dbClient = prisma) => {
-  const rawData = await dbClient.$queryRaw`SELECT count(DISTINCT (transaction_id)) as 'count'
+  const rawData = await dbClient.$queryRaw`SELECT count(DISTINCT transaction_id) as count
                                            FROM transactions
                                                   LEFT JOIN accounts ON transactions.accounts_account_from_id =
                                                                         accounts.account_id or

@@ -54,7 +54,7 @@ const getFilteredTrxByPage = async (
                                      OFFSET ${offsetValue}`;
 
   // count of total of filtered results
-  const countQuery = prisma.$queryRaw`SELECT count(*) as 'count'
+  const countQuery = prisma.$queryRaw`SELECT count(*) as count
                                       FROM (SELECT transaction_id, date_timestamp, invest_transactions.type as 'trx_type', 
                                         invest_assets.type as 'asset_type', note, (total_price/100) as 'total_price', invest_transactions.units, 
                                         invest_assets_asset_id, name, ticker, broker, invest_assets.asset_id, (fees_taxes_amount / 100) as 'fees_taxes_amount', fees_taxes_units 
@@ -76,7 +76,7 @@ const getFilteredTrxByPage = async (
                                        OR (fees_taxes_units) LIKE ${query})
                                      GROUP BY transaction_id) trx`;
 
-  const totalCountQuery = prisma.$queryRaw`SELECT count(*) as 'count'
+  const totalCountQuery = prisma.$queryRaw`SELECT count(*) as count
                                            FROM (SELECT transaction_id, date_timestamp, invest_transactions.type as 'trx_type', 
                                         invest_assets.type as 'asset_type', note, (total_price/100) as 'total_price', invest_transactions.units, 
                                         invest_assets_asset_id, name, ticker, broker, invest_assets.asset_id, (fees_taxes_amount / 100) as 'fees_taxes_amount', fees_taxes_units 

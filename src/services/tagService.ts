@@ -54,12 +54,12 @@ const getFilteredTagsForUserByPage = async (
                                         LIMIT ${pageSize} OFFSET ${offsetValue}`;
 
   // count of total of filtered results
-  const countQuery = dbClient.$queryRaw`SELECT count(*) as 'count'
+  const countQuery = dbClient.$queryRaw`SELECT count(*) as count
                                         FROM tags
                                         WHERE tags.users_user_id = ${userId}
                                         AND (tags.description LIKE ${query} OR tags.name LIKE ${query})`;
 
-  const totalCountQuery = dbClient.$queryRaw`SELECT count(*) as 'count'
+  const totalCountQuery = dbClient.$queryRaw`SELECT count(*) as count
                                         FROM tags
                                         WHERE tags.users_user_id = ${userId}`;
 

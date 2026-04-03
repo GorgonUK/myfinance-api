@@ -202,7 +202,7 @@ class AccountService {
     prismaClient = prisma
   ): Promise<{ balance?: number } | undefined> {
     const data =
-      await prismaClient.$queryRaw`SELECT truncate((coalesce(balance, 0) / 100), 2) as 'balance'
+      await prismaClient.$queryRaw`SELECT trunc((coalesce(balance, 0)::numeric / 100), 2) as balance
                                    FROM balances_snapshot
                                    WHERE accounts_account_id = ${accId}
                                      AND ((year = ${year} AND month <= ${month})

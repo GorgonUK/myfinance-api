@@ -43,9 +43,9 @@ class BudgetService {
              color_gradient,
              budgets_budget_id,
              exclude_from_budgets,
-             truncate((coalesce(planned_amount_credit, 0) / 100), 2) as planned_amount_credit,
-             truncate((coalesce(planned_amount_debit, 0) / 100), 2) as planned_amount_debit,
-             truncate((coalesce(current_amount, 0) / 100), 2) as current_amount
+             trunc((coalesce(planned_amount_credit, 0)::numeric / 100), 2) as planned_amount_credit,
+             trunc((coalesce(planned_amount_debit, 0)::numeric / 100), 2) as planned_amount_debit,
+             trunc((coalesce(current_amount, 0)::numeric / 100), 2) as current_amount
       FROM (
         SELECT *
         FROM budgets_has_categories
@@ -331,7 +331,7 @@ class BudgetService {
       OFFSET ${offsetValue}`;
 
     const filteredCount = await dbClient.$queryRaw`
-      SELECT count(*) as 'count'
+      SELECT count(*) as count
       FROM (SELECT budget_id
             FROM budgets
             WHERE (users_user_id = ${userId})
@@ -341,7 +341,7 @@ class BudgetService {
 
     // count of total of results
     const totalCount = await dbClient.$queryRaw`
-      SELECT count(*) as 'count'
+      SELECT count(*) as count
       FROM budgets
       WHERE users_user_id = ${userId}`;
 
