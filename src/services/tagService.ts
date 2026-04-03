@@ -250,14 +250,16 @@ const getAmountForTagInPeriod = async (
   }
 
   if (includeTransfers) {
-    return dbClient.$queryRaw`SELECT sum(if(type = 'I' OR
-                                                (type = 'T' AND ${accsExclusionSqlExcerptAccountsTo}),
-                                                amount,
-                                                0)) as 'tag_balance_credit',
-                                         sum(if(type = 'E' OR
-                                                (type = 'T' AND ${accsExclusionSqlExcerptAccountsFrom}),
-                                                amount,
-                                                0)) as 'tag_balance_debit'
+    return dbClient.$queryRaw`SELECT sum(CASE
+                                           WHEN type = 'I' OR (type = 'T' AND ${accsExclusionSqlExcerptAccountsTo})
+                                           THEN amount
+                                           ELSE 0
+                                         END) as tag_balance_credit,
+                                         sum(CASE
+                                           WHEN type = 'E' OR (type = 'T' AND ${accsExclusionSqlExcerptAccountsFrom})
+                                           THEN amount
+                                           ELSE 0
+                                         END) as tag_balance_debit
                                   FROM (SELECT amount, type, accounts_account_from_id, accounts_account_to_id
                                         FROM transactions
                                                  INNER JOIN transaction_has_tags
@@ -266,8 +268,8 @@ const getAmountForTagInPeriod = async (
                                           AND date_timestamp between ${fromDate} AND ${toDate}) as transactions_tags`;
   }
 
-  return dbClient.$queryRaw`SELECT sum(if(type = 'I', amount, 0)) as 'tag_balance_credit',
-                                         sum(if(type = 'E', amount, 0)) as 'tag_balance_debit'
+  return dbClient.$queryRaw`SELECT sum(CASE WHEN type = 'I' THEN amount ELSE 0 END) as tag_balance_credit,
+                                         sum(CASE WHEN type = 'E' THEN amount ELSE 0 END) as tag_balance_debit
                                   FROM (SELECT amount, type, accounts_account_from_id, accounts_account_to_id
                                         FROM transactions
                                                  INNER JOIN transaction_has_tags

@@ -392,10 +392,9 @@ class InvestAssetService {
                                         },
                                         ${latestSnapshot?.income_amount ?? 0},
                                         ${latestSnapshot?.cost_amount ?? 0})
-                                ON DUPLICATE KEY UPDATE current_value = ${ConvertUtils.convertFloatToBigInteger(
-                                  newValue
-                                )},
-                                                        updated_at    = ${DateTimeUtils.getCurrentUnixTimestamp()}`;
+                                ON CONFLICT (month, year, invest_assets_asset_id)
+                                DO UPDATE SET current_value = ${ConvertUtils.convertFloatToBigInteger(newValue)},
+                                              updated_at = ${DateTimeUtils.getCurrentUnixTimestamp()}`;
   }
 
   static async updateAssetValue(
@@ -484,16 +483,16 @@ class InvestAssetService {
     const rawSnapshots = (await dbClient.$queryRaw`SELECT month,
                                 year,
                                 invest_asset_evo_snapshot.units,
-                                (invested_amount / 100) as 'invested_amount',
-                                (current_value / 100)   as 'current_value',
-                                (withdrawn_amount / 100) as 'withdrawn_amount',
-                                (income_amount / 100) as 'income_amount',
-                                (cost_amount / 100) as 'cost_amount',
-                                (fees_taxes / 100) as 'fees_taxes',
-                                invest_assets_asset_id  as 'asset_id',
-                                name                    as 'asset_name',
-                                ticker                  as 'asset_ticker',
-                                broker                  as 'asset_broker'
+                                (invested_amount / 100) as invested_amount,
+                                (current_value / 100)   as current_value,
+                                (withdrawn_amount / 100) as withdrawn_amount,
+                                (income_amount / 100) as income_amount,
+                                (cost_amount / 100) as cost_amount,
+                                (fees_taxes / 100) as fees_taxes,
+                                invest_assets_asset_id  as asset_id,
+                                name                    as asset_name,
+                                ticker                  as asset_ticker,
+                                broker                  as asset_broker
                          FROM invest_asset_evo_snapshot
                                   INNER JOIN invest_assets ON invest_assets.asset_id = invest_assets_asset_id
                          WHERE users_user_id = ${userId}
@@ -936,7 +935,14 @@ class InvestAssetService {
     const currentTimestamp = DateTimeUtils.getCurrentUnixTimestamp();
     return dbClient.$queryRaw`INSERT INTO invest_asset_evo_snapshot (month, year, units, invested_amount, current_value, invest_assets_asset_id, created_at, updated_at, withdrawn_amount, income_amount, cost_amount, fees_taxes)
                                     VALUES (${month}, ${year}, ${units}, ${investedAmount}, ${currentAmount}, ${assetId}, ${currentTimestamp}, ${currentTimestamp}, ${withdrawnAmount}, ${incomeAmount}, ${costAmount}, ${feesTaxes})
-                                    ON DUPLICATE KEY UPDATE units = ${units}, invested_amount = ${investedAmount}, updated_at = ${currentTimestamp}, withdrawn_amount = ${withdrawnAmount}, income_amount = ${incomeAmount}, cost_amount = ${costAmount}, fees_taxes = ${feesTaxes};`;
+                                    ON CONFLICT (month, year, invest_assets_asset_id)
+                                    DO UPDATE SET units = ${units},
+                                                  invested_amount = ${investedAmount},
+                                                  updated_at = ${currentTimestamp},
+                                                  withdrawn_amount = ${withdrawnAmount},
+                                                  income_amount = ${incomeAmount},
+                                                  cost_amount = ${costAmount},
+                                                  fees_taxes = ${feesTaxes};`;
   }
 
   static async getAllTransactionsForAssetBetweenDates(
@@ -1187,9 +1193,10 @@ class InvestAssetService {
   }
 
   static async deleteAllAssetEvoSnapshotsForUser(userId: bigint, dbClient = prisma) {
-    return dbClient.$queryRaw`DELETE invest_asset_evo_snapshot FROM invest_asset_evo_snapshot 
-      LEFT JOIN invest_assets ON invest_assets.asset_id = invest_asset_evo_snapshot.invest_assets_asset_id 
-      WHERE users_user_id = ${userId} `;
+    return dbClient.$queryRaw`DELETE FROM invest_asset_evo_snapshot s
+                              USING invest_assets a
+                              WHERE a.asset_id = s.invest_assets_asset_id
+                                AND a.users_user_id = ${userId}`;
   }
 }
 

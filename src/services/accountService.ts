@@ -101,7 +101,7 @@ class AccountService {
                                    a.status,
                                    a.color_gradient,
                                    a.exclude_from_budgets,
-                                   (a.current_balance / 100) as 'balance', a.users_user_id
+                                   (a.current_balance / 100) as balance, a.users_user_id
                             FROM accounts a
                             WHERE users_user_id = ${userId} || ${onlyActiveExcerpt}
                             ORDER BY abs(balance) DESC, case when a.status = ${MYFIN.TRX_TYPES.EXPENSE} then 1 else 0 end`;
@@ -225,9 +225,10 @@ class AccountService {
     return prismaClient.$queryRaw`INSERT INTO balances_snapshot (accounts_account_id, month, year, balance, created_timestamp)
                                   VALUES (${accountId}, ${month}, ${year},
                                           ${newBalance},
-                                          ${currentTimestamp}) ON DUPLICATE KEY
-    UPDATE balance = ${newBalance},
-      updated_timestamp = ${currentTimestamp};`;
+                                          ${currentTimestamp})
+                                  ON CONFLICT (accounts_account_id, month, year)
+                                  DO UPDATE SET balance = EXCLUDED.balance,
+                                                updated_timestamp = ${currentTimestamp};`;
   }
 
   static async getAllTransactionsForAccountBetweenDates(
@@ -441,7 +442,8 @@ class AccountService {
       const fromDate = DateTimeUtils.getUnixTimestampFromDate(new Date(year, month - 1, 1));
 
       const amounts =
-        await prismaTx.$queryRaw`SELECT sum(if(transactions.type = 'I', amount, 0)) as 'account_balance_credit', sum(if(transactions.type = 'E' OR (transactions.type = 'T'), amount, 0)) as 'account_balance_debit'
+        await prismaTx.$queryRaw`SELECT sum(CASE WHEN transactions.type = 'I' THEN amount ELSE 0 END) as account_balance_credit,
+                                        sum(CASE WHEN (transactions.type = 'E' OR transactions.type = 'T') THEN amount ELSE 0 END) as account_balance_debit
                                  FROM transactions
                                         INNER JOIN accounts
                                                    on accounts.account_id =
@@ -636,7 +638,7 @@ class AccountService {
                                    a.status,
                                    a.color_gradient,
                                    a.exclude_from_budgets,
-                                   (a.current_balance / 100) as 'balance', a.users_user_id
+                                   (a.current_balance / 100) as balance, a.users_user_id
                             FROM accounts a
                             WHERE users_user_id = ${userId}
                               AND a.status LIKE ${onlyActive ? MYFIN.ACCOUNT_STATUS.ACTIVE : '%'}

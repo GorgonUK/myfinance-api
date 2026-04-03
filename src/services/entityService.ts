@@ -100,21 +100,23 @@ const getAmountForEntityInPeriod = async (
   }
 
   if (includeTransfers) {
-    return dbClient.$queryRaw`SELECT sum(if(type = 'I' OR
-                                                (type = 'T' AND ${accsExclusionSqlExcerptAccountsTo}),
-                                                amount,
-                                                0)) as 'entity_balance_credit',
-                                         sum(if(type = 'E' OR
-                                                (type = 'T' AND ${accsExclusionSqlExcerptAccountsFrom}),
-                                                amount,
-                                                0)) as 'entity_balance_debit'
+    return dbClient.$queryRaw`SELECT sum(CASE
+                                           WHEN type = 'I' OR (type = 'T' AND ${accsExclusionSqlExcerptAccountsTo})
+                                           THEN amount
+                                           ELSE 0
+                                         END) as entity_balance_credit,
+                                         sum(CASE
+                                           WHEN type = 'E' OR (type = 'T' AND ${accsExclusionSqlExcerptAccountsFrom})
+                                           THEN amount
+                                           ELSE 0
+                                         END) as entity_balance_debit
                                   FROM transactions
                                   WHERE date_timestamp between ${fromDate} AND ${toDate}
                                     AND entities_entity_id = ${entityId} `;
   }
 
-  return dbClient.$queryRaw`SELECT sum(if(type = 'I', amount, 0)) as 'entity_balance_credit',
-                                   sum(if(type = 'E', amount, 0)) as 'entity_balance_debit'
+  return dbClient.$queryRaw`SELECT sum(CASE WHEN type = 'I' THEN amount ELSE 0 END) as entity_balance_credit,
+                                   sum(CASE WHEN type = 'E' THEN amount ELSE 0 END) as entity_balance_debit
                             FROM transactions
                             WHERE date_timestamp between ${fromDate} AND ${toDate}
                               AND entities_entity_id = ${entityId} `;

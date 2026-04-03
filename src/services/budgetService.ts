@@ -323,7 +323,7 @@ class BudgetService {
       SELECT budget_id, month, year, observations, is_open, users_user_id
       FROM budgets
       WHERE (users_user_id = ${userId})
-        AND (observations LIKE ${query} OR month LIKE ${query} OR year LIKE ${query})
+        AND (observations LIKE ${query} OR month::text LIKE ${query} OR year::text LIKE ${query})
         AND is_open LIKE ${isOpenValue}
       GROUP BY budget_id
       ORDER BY year DESC, month DESC
@@ -335,7 +335,7 @@ class BudgetService {
       FROM (SELECT budget_id
             FROM budgets
             WHERE (users_user_id = ${userId})
-              AND (observations LIKE ${query} OR month LIKE ${query} OR year LIKE ${query})
+              AND (observations LIKE ${query} OR month::text LIKE ${query} OR year::text LIKE ${query})
               AND is_open LIKE ${isOpenValue}
             GROUP BY budget_id) budget`;
 
@@ -497,7 +497,8 @@ class BudgetService {
     await dbClient.$executeRaw`
       INSERT INTO budgets_has_categories (budgets_budget_id, budgets_users_user_id, categories_category_id, planned_amount_credit, planned_amount_debit)
       VALUES (${budgetId}, ${userId}, ${catId}, ${plannedValueCredit}, ${plannedValueDebit})
-      ON DUPLICATE KEY UPDATE planned_amount_credit = ${plannedValueCredit}, planned_amount_debit = ${plannedValueDebit}`;
+      ON CONFLICT (budgets_budget_id, budgets_users_user_id, categories_category_id)
+      DO UPDATE SET planned_amount_credit = ${plannedValueCredit}, planned_amount_debit = ${plannedValueDebit}`;
   }
 
   private static async parseCatValuesIntoBudgetCategories(
@@ -569,7 +570,7 @@ class BudgetService {
     const month = Number.parseInt(budget.month as any, 10);
     const year = Number.parseInt(budget.year as any, 10);
     const result: any = await dbClient.$queryRaw`
-      SELECT sum(amount) as 'amount'
+      SELECT sum(amount) as amount
       FROM transactions
       INNER JOIN accounts ON transactions.accounts_account_from_id = accounts.account_id
       WHERE users_user_id = ${userId}

@@ -124,7 +124,7 @@ const getFilteredTransactionsByForUser = async (
                                             acc_to.name                 as account_to_name,
                                             accounts_account_to_id,
                                             acc_from.name               as account_from_name,
-                                            GROUP_CONCAT(tags.name) as tag_names
+                                            string_agg(tags.name, ',') as tag_names
                                      FROM transactions
                                             LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
                                             LEFT JOIN categories
@@ -151,7 +151,7 @@ const getFilteredTransactionsByForUser = async (
 
   // count of total of filtered results
   const countQuery = prisma.$queryRaw`SELECT count(*) as count
-                                      FROM (SELECT transactions.date_timestamp, GROUP_CONCAT(tags.name) as tag_names
+                                      FROM (SELECT transactions.date_timestamp, string_agg(tags.name, ',') as tag_names
                                             from transactions
                                                    LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
                                                    LEFT JOIN categories
@@ -883,7 +883,7 @@ const getYearOfFirstTransactionForUser = async (
   userId: bigint,
   dbClient = prisma
 ): Promise<number> => {
-  const result = await dbClient.$queryRaw`SELECT YEAR(FROM_UNIXTIME(date_timestamp)) as 'year'
+  const result = await dbClient.$queryRaw`SELECT EXTRACT(YEAR FROM to_timestamp(date_timestamp))::int as year
                                           FROM transactions
                                                  LEFT JOIN accounts account_from
                                                             ON account_from.account_id = transactions.accounts_account_from_id
@@ -915,10 +915,11 @@ const getDateTimestampOfFirstTransactionForUser = async (
 };
 
 const deleteAllTransactionsFromUser = async (userId: bigint, dbClient = prisma) => {
-  return dbClient.$queryRaw`DELETE transactions FROM transactions 
-LEFT JOIN accounts acc_to ON acc_to.account_id = transactions.accounts_account_to_id 
-LEFT JOIN accounts acc_from ON acc_from.account_id = transactions.accounts_account_from_id
-WHERE acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId} `;
+  return dbClient.$queryRaw`DELETE FROM transactions t
+                            USING accounts acc_to, accounts acc_from
+                            WHERE acc_to.account_id = t.accounts_account_to_id
+                              AND acc_from.account_id = t.accounts_account_from_id
+                              AND (acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId})`;
 };
 
 export default {

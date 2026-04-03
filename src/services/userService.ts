@@ -150,7 +150,10 @@ const userService = {
     | undefined
   > => {
     const data =
-      await dbClient.$queryRaw`SELECT date_timestamp, MONTH (FROM_UNIXTIME(date_timestamp)) as 'month', YEAR (FROM_UNIXTIME(date_timestamp)) as 'year', entities.users_user_id
+      await dbClient.$queryRaw`SELECT date_timestamp,
+                                      EXTRACT(MONTH FROM to_timestamp(date_timestamp))::int as month,
+                                      EXTRACT(YEAR FROM to_timestamp(date_timestamp))::int as year,
+                                      entities.users_user_id
                                           FROM transactions
                                             left join entities
                                           ON entities_entity_id = entities.entity_id
